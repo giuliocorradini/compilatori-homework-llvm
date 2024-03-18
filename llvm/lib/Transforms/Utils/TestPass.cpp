@@ -5,7 +5,7 @@
 namespace llvm {
     PreservedAnalyses TestPass::run(Function &F, FunctionAnalysisManager &AM) {
         errs() << "Questa funzione si chiama " << F.getName() << "\n";
-        errs() << "Il numero di argomenti è " << F.arg_end() - F.arg_begin() << "\n";
+        errs() << "Il numero di argomenti è " << F.arg_end() - F.arg_begin() << (F.isVarArg() ? "+*" : "") << "\n";
         
         int bbnum = 0;
         int calls = 0;
