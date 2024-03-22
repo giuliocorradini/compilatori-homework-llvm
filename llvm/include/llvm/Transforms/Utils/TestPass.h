@@ -4,7 +4,9 @@
 
 namespace llvm {
     class TestPass : public PassInfoMixin<TestPass> {
+    protected:
+        void analyzeFunction(Function &F);
     public:
-        PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
+        PreservedAnalyses run(Module &F, ModuleAnalysisManager &AM);
     };
 }

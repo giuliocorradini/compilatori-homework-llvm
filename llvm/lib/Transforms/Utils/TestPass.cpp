@@ -3,7 +3,7 @@
 #include "llvm/IR/Instructions.h"
 
 namespace llvm {
-    PreservedAnalyses TestPass::run(Function &F, FunctionAnalysisManager &AM) {
+    void TestPass::analyzeFunction(Function &F) {
         errs() << "Questa funzione si chiama " << F.getName() << "\n";
         errs() << "Il numero di argomenti è " << F.arg_end() - F.arg_begin() << (F.isVarArg() ? "+*" : "") << "\n";
         
@@ -25,6 +25,12 @@ namespace llvm {
         errs() << "Numero di chiamate a funzione " << calls << "\n";
         errs() << "Numero di basic blocks " << bbnum << "\n";
         errs() << "Numero di istruzioni " << instructions << "\n";
+    }
+
+    PreservedAnalyses TestPass::run(Module &M, ModuleAnalysisManager &AM) {
+        for (Function &f: M) {
+            analyzeFunction(f);
+        }
 
         return PreservedAnalyses::all();
     }
