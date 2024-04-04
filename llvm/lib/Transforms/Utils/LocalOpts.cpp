@@ -22,7 +22,7 @@ using namespace std;
 using namespace llvm;
 
 namespace MultiInstructionOpt {
-  optional<Instruction::BinaryOps> getReverseOpcode(BinaryOperator *I) {
+  optional<Instruction::BinaryOps> getReverseOpcode(BinaryOperator const *I) {
     auto opcode = I->getOpcode();
 
     static map<Instruction::BinaryOps, Instruction::BinaryOps> reverse = {
@@ -32,7 +32,6 @@ namespace MultiInstructionOpt {
       {Instruction::SDiv, Instruction::Mul},
       {Instruction::Shl, Instruction::LShr},
       {Instruction::LShr, Instruction::Shl},
-      {Instruction::FNeg, Instruction::FNeg}
     };
 
     if (auto r = reverse.find(opcode); r != reverse.end())
@@ -44,22 +43,32 @@ namespace MultiInstructionOpt {
   /**
    * Gets the other operand, given an instruction and one of the operands
   */
-  Value *getOtherOperand(Instruction &I, Value *o) {
-    auto op = I.getOperand(0);
+  Value *getOtherOperand(Instruction const *I, Value const *o) {
+    auto op = I->getOperand(0);
     
-    return (op == o) ? I.getOperand(1) : op;
+    return (op == o) ? I->getOperand(1) : op;
   }
 
   /**
    * Confronts operands to see if the opposite operation is performed.
+   * 
+   * @param A Pointer to instruction to optimized, casted to BinaryOperator
+   * @param B Pointer to the user, i.e. the instruction that uses A as argument
   */
-  bool isReverseOperation(BinaryOperator *A, BinaryOperator *B) {
-    if (auto revOpcode = getReverseOpcode(A); revOpcode == B->getOpcode()) {
-      ;
+  bool isReverseOperation(BinaryOperator const *A, BinaryOperator const *B) {
+    auto revOpcode = getReverseOpcode(A);
+    if (revOpcode.has_value() and revOpcode.value() == B->getOpcode()) {
+      auto otherOperand = getOtherOperand(B, A);  //< get the other operand of B which is not A
+      if (otherOperand == A->getOperand(0) or otherOperand == A->getOperand(1))
+        return true;
     }
+
+    return false;
   }
 
   bool optimizeOn(BasicBlock &B) {
+    map<Instruction const *, Instruction *> replaceMapping;
+
     for (Instruction &I: B) {
       
       auto BinaryOp = dyn_cast<BinaryOperator>(&I);
@@ -70,23 +79,37 @@ namespace MultiInstructionOpt {
 
       
       for (auto user: I.users()) {
-        auto UserBinaryOp = dyn_cast<BinaryOperator>(&I);
+        Instruction const *ubop = dyn_cast<const Instruction>(&user);
+        if (not ubop)
+          continue;
+
+        BinaryOperator const *UserBinaryOp = dyn_cast<const BinaryOperator>(ubop);  //Why not BinaryOperator directly? Doesn't work
         if (not UserBinaryOp)
           continue;
 
         if (isReverseOperation(BinaryOp, UserBinaryOp)) {
-          UserBinaryOp->replaceAllUsesWith(BinaryOp);
+          replaceMapping[UserBinaryOp] = BinaryOp;
         }
       }
       
     }
 
-    return true;
+    for (Instruction &I: B) {
+      if (replaceMapping.find(&I) != replaceMapping.end())
+        I.replaceAllUsesWith(replaceMapping[&I]);
+    }
+
+    return replaceMapping.empty() ? false : true;
   }
 }
 
 bool runOnBasicBlock(BasicBlock &B) {
-  return true;
+  bool isOptimized = false;
+
+  // Run strenght reduction and algebraic optimization here
+  isOptimized = MultiInstructionOpt::optimizeOn(B);
+
+  return isOptimized;
 }
 
 
