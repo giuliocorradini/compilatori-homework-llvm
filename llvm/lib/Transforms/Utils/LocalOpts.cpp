@@ -78,12 +78,8 @@ namespace MultiInstructionOpt {
       }
 
       
-      for (auto user: I.users()) {
-        Instruction const *ubop = dyn_cast<const Instruction>(&user);
-        if (not ubop)
-          continue;
-
-        BinaryOperator const *UserBinaryOp = dyn_cast<const BinaryOperator>(ubop);  //Why not BinaryOperator directly? Doesn't work
+      for (auto userIt: I.users()) {
+        BinaryOperator *UserBinaryOp = dyn_cast<BinaryOperator>(userIt);
         if (not UserBinaryOp)
           continue;
 
