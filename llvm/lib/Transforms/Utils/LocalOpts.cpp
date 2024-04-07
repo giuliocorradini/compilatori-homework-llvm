@@ -5,11 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-//
-// This pass implements algebraic reduction, strength reduction and
-// multi-instruction optimizations.
-//
-//===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Utils/LocalOpts.h"
 #include "llvm/IR/Instructions.h"
@@ -190,12 +185,54 @@ namespace StrenghtReduction {
 	}
 }
 
+namespace AlgebraicIdentityOpt {
+	bool algebraicIdentity(llvm::Instruction &I){
+		Value *Op1=I.getOperand(0);
+		Value *Op2=I.getOperand(1);
+		if(BinaryOperator::Mul == I.getOpcode()){
+		//if first operand is constant and 1 and second operand is not a constant, or viceversa...
+		if(ConstantInt *C = dyn_cast<ConstantInt>(Op1); C && C->getValue().isOne() && not dyn_cast<ConstantInt>(Op2)){ 
+			I.replaceAllUsesWith(Op2);
+		} else if(ConstantInt *C = dyn_cast<ConstantInt>(Op2); C && C->getValue().isOne() && not dyn_cast<ConstantInt>(Op1)) {
+			I.replaceAllUsesWith(Op1);
+		} else {
+			return false;
+		}
+		return true;
+		}
+		else if(BinaryOperator::Add == I.getOpcode()){
+		//if first operand is constant and 0 and second operand is not a constant, or viceversa...
+		if(ConstantInt *C = dyn_cast<ConstantInt>(Op1); C && C->getValue().isZero() && not dyn_cast<ConstantInt>(Op2)){ 
+			I.replaceAllUsesWith(Op2);
+		} else if(ConstantInt *C = dyn_cast<ConstantInt>(Op2); C && C->getValue().isZero() && not dyn_cast<ConstantInt>(Op1)) {
+			I.replaceAllUsesWith(Op1);
+		} else {
+			return false;
+		}
+		return true;
+		}
+		return false;
+	}
+
+	bool optimizeOn(BasicBlock &B) {
+    bool optimizedSomething = false;
+
+    for (auto &InstIter : B) {
+      // algebraic identity verification and optimization
+      optimizedSomething |= algebraicIdentity(InstIter);
+    }
+
+    return optimizedSomething;
+	}
+}
+
 bool runOnBasicBlock(BasicBlock &B) {
   bool isOptimized = false;
 
   // Run strenght reduction and algebraic optimization here
   isOptimized = MultiInstructionOpt::optimizeOn(B);
   isOptimized |= StrenghtReduction::optimizeOn(B);
+  isOptimized |= AlgebraicIdentityOpt::optimizeOn(B);
 
   return isOptimized;
 }
