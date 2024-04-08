@@ -191,9 +191,9 @@ bool optimizeOn(BasicBlock &B) {
 
 namespace AlgebraicIdentityOpt {
 bool algebraicIdentity(llvm::Instruction &I) {
-  Value *Op1 = I.getOperand(0);
-  Value *Op2 = I.getOperand(1);
   if (BinaryOperator::Mul == I.getOpcode()) {
+    Value *Op1 = I.getOperand(0);
+    Value *Op2 = I.getOperand(1);
     // if first operand is constant and 1 and second operand is not a constant,
     // or viceversa...
     if (ConstantInt *C = dyn_cast<ConstantInt>(Op1);
@@ -207,6 +207,8 @@ bool algebraicIdentity(llvm::Instruction &I) {
     }
     return true;
   } else if (BinaryOperator::Add == I.getOpcode()) {
+    Value *Op1 = I.getOperand(0);
+    Value *Op2 = I.getOperand(1);
     // if first operand is constant and 0 and second operand is not a constant,
     // or viceversa...
     if (ConstantInt *C = dyn_cast<ConstantInt>(Op1);
