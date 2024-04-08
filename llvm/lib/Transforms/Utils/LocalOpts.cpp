@@ -50,20 +50,22 @@ Value *getOtherOperand(Instruction const *I, Value const *o) {
  * @param A Pointer to instruction to optimized, casted to BinaryOperator
  * @param B Pointer to the user, i.e. the instruction that uses A as argument
  */
-bool isReverseOperation(BinaryOperator const *A, BinaryOperator const *B) {
+optional<Value *> isReverseOperation(BinaryOperator const *A, BinaryOperator const *B) {
   auto revOpcode = getReverseOpcode(A);
   if (revOpcode.has_value() and revOpcode.value() == B->getOpcode()) {
     auto otherOperand =
         getOtherOperand(B, A); //< get the other operand of B which is not A
-    if (otherOperand == A->getOperand(0) or otherOperand == A->getOperand(1))
-      return true;
+    if (otherOperand == A->getOperand(0))
+      return make_optional(A->getOperand(1));
+    else if (otherOperand == A->getOperand(1))
+      return make_optional(A->getOperand(0));
   }
 
-  return false;
+  return nullopt;
 }
 
 bool optimizeOn(BasicBlock &B) {
-  map<Instruction const *, Instruction *> replaceMapping;
+  map<Instruction const *, Value *> replaceMapping;
 
   for (Instruction &I : B) {
 
@@ -78,8 +80,8 @@ bool optimizeOn(BasicBlock &B) {
       if (not UserBinaryOp)
         continue;
 
-      if (isReverseOperation(BinaryOp, UserBinaryOp)) {
-        replaceMapping[UserBinaryOp] = BinaryOp;
+      if (auto initOp = isReverseOperation(BinaryOp, UserBinaryOp); initOp) {
+        replaceMapping[UserBinaryOp] = initOp.value();
       }
     }
   }
@@ -262,8 +264,7 @@ bool runOnFunction(Function &F) {
 
 PreservedAnalyses LocalOpts::run(Module &M, ModuleAnalysisManager &AM) {
   for (auto Fiter = M.begin(); Fiter != M.end(); ++Fiter)
-    if (runOnFunction(*Fiter))
-      return PreservedAnalyses::none();
+    runOnFunction(*Fiter);
 
   return PreservedAnalyses::all();
 }
