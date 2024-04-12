@@ -243,9 +243,9 @@ bool runOnBasicBlock(BasicBlock &B) {
   bool isOptimized = false;
 
   // Run strenght reduction and algebraic optimization here
-  isOptimized = MultiInstructionOpt::optimizeOn(B);
-  isOptimized |= StrenghtReduction::optimizeOn(B);
   isOptimized |= AlgebraicIdentityOpt::optimizeOn(B);
+  isOptimized |= StrenghtReduction::optimizeOn(B);
+  isOptimized |= MultiInstructionOpt::optimizeOn(B);
 
   return isOptimized;
 }
