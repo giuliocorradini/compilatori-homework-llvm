@@ -9,6 +9,7 @@
 #include "llvm/Transforms/Utils/LocalOpts.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Transforms/Utils/UDDUWalker.h"
 #include <map>
 #include <optional>
 #include <string>
@@ -246,6 +247,9 @@ bool runOnBasicBlock(BasicBlock &B) {
   isOptimized |= AlgebraicIdentityOpt::optimizeOn(B);
   isOptimized |= StrenghtReduction::optimizeOn(B);
   isOptimized |= MultiInstructionOpt::optimizeOn(B);
+
+  walk_UD(*B.begin());
+  walk_DU(*B.begin());
 
   return isOptimized;
 }
