@@ -37,7 +37,6 @@ add_llvm_component_library(LLVMTransformUtils
   LCSSA.cpp
   LibCallsShrinkWrap.cpp
   Local.cpp
-  LocalOpts.cpp
   LoopPeel.cpp
   LoopRotationUtils.cpp
   LoopSimplify.cpp
@@ -79,12 +78,14 @@ add_llvm_component_library(LLVMTransformUtils
   SplitModule.cpp
   StripNonLineTableDebugInfo.cpp
   SymbolRewriter.cpp
-  TestPass.cpp
   UnifyFunctionExitNodes.cpp
   UnifyLoopExits.cpp
   Utils.cpp
   ValueMapper.cpp
   VNCoercion.cpp
+  TestPass.cpp
+  LocalOpts.cpp
+  LoopWalkPass.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms
