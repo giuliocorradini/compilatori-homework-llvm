@@ -4,6 +4,11 @@
 using namespace llvm;
 using namespace std;
 
+/**
+ * Load e store non vengono mai marcate come loop invariant, quindi dobbiamo fare un passo ulteriore di
+ * ottimizzazione con LLVM opt: mem2reg.
+*/
+
 PreservedAnalyses LICMyPass::run(Loop &L, LoopAnalysisManager &LAM, LoopStandardAnalysisResults &LAR, LPMUpdater &LU) {
     if (not L.isLoopSimplifyForm()) {
         errs() << "Loop is not in simplify form\n";
@@ -23,8 +28,9 @@ PreservedAnalyses LICMyPass::run(Loop &L, LoopAnalysisManager &LAM, LoopStandard
             auto op1 = I.getOperand(0);
             bool op1_valid = false;
             Instruction *op1_rd = dyn_cast<Instruction>(op1);
+            Argument *arg1 = dyn_cast<Argument>(op1);
 
-            if (Constant *c = dyn_cast<Constant>(op1); c or (not L.contains(op1_rd)) or loop_invariants.find(op1_rd) != loop_invariants.end())
+            if (Constant *c = dyn_cast<Constant>(op1); c or arg1 or (op1_rd and not L.contains(op1_rd)) or loop_invariants.find(op1_rd) != loop_invariants.end())
                 op1_valid = true;
             
             if (I.isUnaryOp()) {
@@ -35,8 +41,9 @@ PreservedAnalyses LICMyPass::run(Loop &L, LoopAnalysisManager &LAM, LoopStandard
                 auto op2 = I.getOperand(1);
                 bool op2_valid = false;
                 Instruction *op2_rd = dyn_cast<Instruction>(op2);
+                Argument *arg2 = dyn_cast<Argument>(op2);
 
-                if (Constant *c = dyn_cast<Constant>(op2); c or (not L.contains(op2_rd)) or loop_invariants.find(op2_rd) != loop_invariants.end())
+                if (Constant *c = dyn_cast<Constant>(op2); c or arg2 or (op2_rd and not L.contains(op2_rd)) or loop_invariants.find(op2_rd) != loop_invariants.end())
                     op2_valid = true;
 
                 if (op1_valid and op2_valid) {
@@ -65,6 +72,11 @@ PreservedAnalyses LICMyPass::run(Loop &L, LoopAnalysisManager &LAM, LoopStandard
         errs() << "The exit block is: " << L.getExitBlock()->getNameOrAsOperand() << "\n";
     else
         errs() << "Multiple exit blocks\n";
+
+
+    // Code motion candidates
+
+    errs() << "\n\n";
 
     return PreservedAnalyses::all();
 }
