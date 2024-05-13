@@ -1,4 +1,5 @@
 #include "llvm/Transforms/Utils/LICMy.h"
+#include "llvm/IR/Dominators.h"
 #include <vector>
 
 using namespace llvm;
@@ -68,13 +69,31 @@ PreservedAnalyses LICMyPass::run(Loop &L, LoopAnalysisManager &LAM, LoopStandard
         errs() << BB->getNameOrAsOperand() << "\n";
     }
 
-    if (L.getExitBlock())
-        errs() << "The exit block is: " << L.getExitBlock()->getNameOrAsOperand() << "\n";
-    else
-        errs() << "Multiple exit blocks\n";
-
-
     // Code motion candidates
+    SmallVector<BasicBlock *, 10> exits;
+    L.getExitBlocks(exits);
+
+    errs() << "Exits blocks\n";
+
+    for (auto eb: exits)
+        errs() << eb->getNameOrAsOperand() << "\n";
+
+    DominatorTree &DT = LAR.DT;
+
+    set<Instruction *> candidates = {};
+
+    for (auto instr: loop_invariants) {
+
+        if (all_of(exits.begin(), exits.end(), [&](BasicBlock *exit_block) {return DT.dominates(instr, exit_block);})
+        or all_of(instr->user_begin(), instr->user_end(), [&L](Value *inst) {Instruction *i = dyn_cast<Instruction>(inst); return i && L.contains(i);}))
+            candidates.insert(instr);
+    }
+
+    errs() << "Candidates:\n";
+
+    for (auto cand: candidates) {
+        errs() << cand->getNameOrAsOperand() << "\n";
+    }
 
     errs() << "\n\n";
 
