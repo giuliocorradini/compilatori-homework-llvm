@@ -87,7 +87,6 @@ add_llvm_component_library(LLVMTransformUtils
   LocalOpts.cpp
   LoopWalkPass.cpp
   CFGWalk.cpp
-  MyLoopInvariantCodeMotion.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms
