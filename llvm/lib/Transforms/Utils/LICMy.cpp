@@ -5,7 +5,7 @@
 using namespace llvm;
 using namespace std;
 
-void isLoopInvariant(Instruction &I, Loop &L, set<Instruction *> &loop_invariants){
+void addIfLoopInvariant(Instruction &I, Loop &L, set<Instruction *> &loop_invariants){
     if (not I.isBinaryOp() and not I.isUnaryOp())
         return;
     
@@ -56,18 +56,29 @@ bool isDeadAfterLoop(Instruction &Inst, Loop &L){
     });
 }
 
-//TODO: break in find loop invariants and check if LI are also movable to preheader (outside this function)
-void loopOnBB(BasicBlock &BB, Loop &L, SmallVector<BasicBlock *, 10> &exits, set<Instruction *> &Mov, DominatorTree &DT){
+/**
+ * Given a BasicBlock and a set of loop invariant instructions, populates the set with loop invariants
+ * for this basic block.
+*/
+void findLoopInvariants(BasicBlock &BB, Loop &L, set<Instruction *> &LI){
     for (auto &I : BB)
-        isLoopInvariant(I, L, Mov);
-    
-    for (auto &I: Mov) {
-        if (dominatesAllExits(I, exits, DT) || isDeadAfterLoop(*I,L) ){// oppure la roba degli usi
-            errs() << "è anche candidato per la move\n";
-            Mov.insert(I);
+        addIfLoopInvariant(I, L, LI);
+}
+
+/**
+ * Given a set of LoopInvariants Instructions, return a set of Movable instruction.
+*/
+set<Instruction *> filterMovable(Loop &L, SmallVector<BasicBlock *, 10> &exits, set<Instruction *> &LoopInvariants, DominatorTree &DT){
+    set<Instruction *> Movable;
+
+    for (auto &I: LoopInvariants) {
+        if (dominatesAllExits(I, exits, DT) || isDeadAfterLoop(*I,L) ) {
+            errs() << I->getNameOrAsOperand() << " is candidate for move\n";
+            Movable.insert(I);
         }
     }
 
+    return Movable;
 }
 
 void moveToPreHeader(Instruction *Inst, BasicBlock *PreHeader){
@@ -96,15 +107,16 @@ PreservedAnalyses LICMyPass::run(Loop &L, LoopAnalysisManager &LAM, LoopStandard
 
     errs() << "Loop " << L.getName() << "\n";
 
-    set<Instruction *> MovableInst; //< Candidates for LICM
+    set<Instruction *> LoopInvariants; //< Candidates for LICM
     SmallVector<BasicBlock*, 10> ExitBlocks;
     L.getExitBlocks(ExitBlocks);
     DominatorTree &DT = LAR.DT;
 
     for (auto BB: L.getBlocks()) {
-        loopOnBB(*BB, L, ExitBlocks, MovableInst, DT);
+        findLoopInvariants(*BB, L, LoopInvariants);
     }
-    
+
+    set<Instruction *> MovableInst = filterMovable(L, ExitBlocks, LoopInvariants, DT);
 
     BasicBlock *PreHeader = L.getLoopPreheader();
     errs() << "Number of movable instructions " << MovableInst.size() << "\n";
