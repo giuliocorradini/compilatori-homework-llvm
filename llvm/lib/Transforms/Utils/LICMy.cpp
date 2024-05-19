@@ -5,7 +5,7 @@
 using namespace llvm;
 using namespace std;
 
-void addIfLoopInvariant(Instruction &I, Loop &L, set<Instruction *> &loop_invariants){
+static void addIfLoopInvariant(Instruction &I, Loop &L, set<Instruction *> &loop_invariants){
     if (not I.isBinaryOp() and not I.isUnaryOp())
         return;
     
@@ -41,7 +41,7 @@ void addIfLoopInvariant(Instruction &I, Loop &L, set<Instruction *> &loop_invari
 /**
  * Check if BasicBlock A dominates all the exit blocks of the Loop
 */
-bool dominatesAllExits(Instruction *I, SmallVectorImpl<BasicBlock *> &ExitBlocks, DominatorTree &DT) {
+static bool dominatesAllExits(Instruction *I, SmallVectorImpl<BasicBlock *> &ExitBlocks, DominatorTree &DT) {
     return all_of(ExitBlocks.begin(), ExitBlocks.end(), [&](BasicBlock *exit) {return DT.dominates(I, exit);});
 }
 
@@ -49,7 +49,7 @@ bool dominatesAllExits(Instruction *I, SmallVectorImpl<BasicBlock *> &ExitBlocks
  * A value is dead after loop iff it has no users outside the loop. Equivalent to:
  * all of its users are inside the loop.
 */
-bool isDeadAfterLoop(Instruction &Inst, Loop &L){
+static bool isDeadAfterLoop(Instruction &Inst, Loop &L){
     return none_of(Inst.user_begin(), Inst.user_end(), [&](Value *UserAsValue) {
         Instruction *User = dyn_cast<Instruction>(UserAsValue);
         return User and not L.contains(User);   //not L.contains check if User is outside the loop
@@ -60,7 +60,7 @@ bool isDeadAfterLoop(Instruction &Inst, Loop &L){
  * Given a BasicBlock and a set of loop invariant instructions, populates the set with loop invariants
  * for this basic block.
 */
-void findLoopInvariants(BasicBlock &BB, Loop &L, set<Instruction *> &LI){
+static void findLoopInvariants(BasicBlock &BB, Loop &L, set<Instruction *> &LI){
     for (auto &I : BB)
         addIfLoopInvariant(I, L, LI);
 }
@@ -68,7 +68,7 @@ void findLoopInvariants(BasicBlock &BB, Loop &L, set<Instruction *> &LI){
 /**
  * Given a set of LoopInvariants Instructions, return a set of Movable instruction.
 */
-set<Instruction *> filterMovable(Loop &L, SmallVector<BasicBlock *, 10> &exits, set<Instruction *> &LoopInvariants, DominatorTree &DT){
+static set<Instruction *> filterMovable(Loop &L, SmallVector<BasicBlock *, 10> &exits, set<Instruction *> &LoopInvariants, DominatorTree &DT){
     set<Instruction *> Movable;
 
     for (auto &I: LoopInvariants) {
@@ -81,7 +81,7 @@ set<Instruction *> filterMovable(Loop &L, SmallVector<BasicBlock *, 10> &exits, 
     return Movable;
 }
 
-void moveToPreHeader(Instruction *Inst, BasicBlock *PreHeader){
+static void moveToPreHeader(Instruction *Inst, BasicBlock *PreHeader){
     for (User::op_iterator Operand = Inst->op_begin(); Operand != Inst->op_end(); ++Operand) {
         Value *OperandValue = *Operand;
         if (dyn_cast<Constant>(OperandValue) || dyn_cast<Argument>(OperandValue))
@@ -96,8 +96,8 @@ void moveToPreHeader(Instruction *Inst, BasicBlock *PreHeader){
 
 
 /**
- * Load e store non vengono mai marcate come loop invariant, quindi dobbiamo fare un passo ulteriore di
- * ottimizzazione con LLVM opt: mem2reg.
+ * Load e store are never marked as loop invariants, this makes every instruction virtually loop variant. To enable
+ * this optimization the user must add a mem2reg pass to its pipeline. 
 */
 PreservedAnalyses LICMyPass::run(Loop &L, LoopAnalysisManager &LAM, LoopStandardAnalysisResults &LAR, LPMUpdater &LU){
     if (not L.isLoopSimplifyForm()) {
