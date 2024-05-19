@@ -83,7 +83,7 @@ void loopOnBB(BasicBlock &BB, Loop &L, SmallVector<BasicBlock *, 10> &exits, set
     
     for (auto &I: Mov) {
         if (dominatesAllExits(I, exits, DT) || isDeadAfterLoop(*I,L) ){// oppure la roba degli usi
-            outs() << "è anche candidato per la move\n";
+            errs() << "è anche candidato per la move\n";
             Mov.insert(I);
         }
     }
@@ -99,9 +99,8 @@ void moveToPreHeader(Instruction *Inst, BasicBlock *PreHeader){
     }
     Inst->removeFromParent();
     Inst->insertInto(PreHeader, --PreHeader->end());
-    //BasicBlock::iterator InsertPoint = --PreHeader->end();
-    //Inst->insertBefore(&*InsertPoint);
-    outs() << "inserita l'istruzione " << Inst->getNameOrAsOperand() << " nel blocco: " << PreHeader->getNameOrAsOperand() << "\n";
+
+    errs() << "Moved " << Inst->getNameOrAsOperand() << " into basic block " << PreHeader->getNameOrAsOperand() << "\n";
 }
 
 
@@ -117,7 +116,7 @@ PreservedAnalyses LICMyPass::run(Loop &L, LoopAnalysisManager &LAM, LoopStandard
 
     errs() << "Loop " << L.getName() << "\n";
 
-    set<Instruction *> MovableInst; //< Candidate for LICM
+    set<Instruction *> MovableInst; //< Candidates for LICM
     SmallVector<BasicBlock*, 10> ExitBlocks;
     L.getExitBlocks(ExitBlocks);
     DominatorTree &DT = LAR.DT;
@@ -128,7 +127,7 @@ PreservedAnalyses LICMyPass::run(Loop &L, LoopAnalysisManager &LAM, LoopStandard
     
 
     BasicBlock *PreHeader = L.getLoopPreheader();
-    errs() << "Number of movable instruction " << MovableInst.size() << "\n";
+    errs() << "Number of movable instructions " << MovableInst.size() << "\n";
     for (Instruction *Inst : MovableInst){
         moveToPreHeader(Inst, PreHeader);
     }
