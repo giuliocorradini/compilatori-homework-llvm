@@ -5,22 +5,6 @@
 using namespace llvm;
 using namespace std;
 
-bool isLoopInvariant(Instruction &Inst, Loop &L);
-bool isLoopInvariant(Value *Operand, Loop &L);
-
-void moveToPreHeader(Instruction *Inst);
-
-void markInstruction(Instruction *Inst) {
-    LLVMContext &C = Inst->getContext();
-    MDNode *MDnode = MDNode::get(C, MDString::get(C, "true"));
-    Inst->setMetadata("isLoopInvariant", MDnode);
-}
-
-bool isMarkedLoopInvariant(Instruction *Inst){
-    MDNode *MDnode = Inst->getMetadata("isLoopInvariant");
-    return (MDnode) ? true : false;
-}
-
 void isLoopInvariant(Instruction &I, Loop &L, set<Instruction *> &loop_invariants){
     if (not I.isBinaryOp() and not I.isUnaryOp())
         return;
@@ -58,25 +42,21 @@ void isLoopInvariant(Instruction &I, Loop &L, set<Instruction *> &loop_invariant
  * Check if BasicBlock A dominates all the exit blocks of the Loop
 */
 bool dominatesAllExits(Instruction *I, SmallVectorImpl<BasicBlock *> &ExitBlocks, DominatorTree &DT) {
-    /*
-    for (BasicBlock *BB : ExitBlocks) {
-        if (!DT.dominates(A, BB)) {
-            return false;
-        }
-    }
-    return true;
-    */
     return all_of(ExitBlocks.begin(), ExitBlocks.end(), [&](BasicBlock *exit) {return DT.dominates(I, exit);});
 }
 
+/**
+ * A value is dead after loop iff it has no users outside the loop. Equivalent to:
+ * all of its users are inside the loop.
+*/
 bool isDeadAfterLoop(Instruction &Inst, Loop &L){
-    for (auto *User : Inst.users()){
-        if (Instruction *I = dyn_cast<Instruction>(User); I && !L.contains(I))
-            return false;
-    }
-    return true;
+    return none_of(Inst.user_begin(), Inst.user_end(), [&](Value *UserAsValue) {
+        Instruction *User = dyn_cast<Instruction>(UserAsValue);
+        return User and not L.contains(User);   //not L.contains check if User is outside the loop
+    });
 }
 
+//TODO: break in find loop invariants and check if LI are also movable to preheader (outside this function)
 void loopOnBB(BasicBlock &BB, Loop &L, SmallVector<BasicBlock *, 10> &exits, set<Instruction *> &Mov, DominatorTree &DT){
     for (auto &I : BB)
         isLoopInvariant(I, L, Mov);
