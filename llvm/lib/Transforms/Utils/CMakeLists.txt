@@ -37,6 +37,7 @@ add_llvm_component_library(LLVMTransformUtils
   LCSSA.cpp
   LibCallsShrinkWrap.cpp
   LICMy.cpp
+  MyLoopFuse.cpp
   Local.cpp
   LocalOpts.cpp
   LoopPeel.cpp

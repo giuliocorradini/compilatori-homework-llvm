@@ -240,6 +240,7 @@
 #include "llvm/Transforms/Utils/LCSSA.h"
 #include "llvm/Transforms/Utils/LibCallsShrinkWrap.h"
 #include "llvm/Transforms/Utils/LICMy.h"
+#include "llvm/Transforms/Utils/MyLoopFuse.h"
 #include "llvm/Transforms/Utils/LocalOpts.h"
 #include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/LoopVersioning.h"
