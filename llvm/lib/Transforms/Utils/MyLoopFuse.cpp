@@ -1,7 +1,8 @@
 #include "llvm/Transforms/Utils/MyLoopFuse.h"
+#include "llvm/IR/PassManager.h"
 
 using namespace llvm;
 
-PreservedAnalyses MyLoopFuse::run(Module &M, ModuleAnalysisManager &AM) {
+PreservedAnalyses MyLoopFuse::run(Function &F, FunctionAnalysisManager &AM) {
     return PreservedAnalyses::all();
 }

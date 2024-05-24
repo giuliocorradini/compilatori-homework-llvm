@@ -5,6 +5,6 @@
 namespace llvm {
     class MyLoopFuse : public PassInfoMixin<MyLoopFuse> {
     public:
-        PreservedAnalyses run(Module &F, ModuleAnalysisManager &AM);
+        PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
     };
 }
