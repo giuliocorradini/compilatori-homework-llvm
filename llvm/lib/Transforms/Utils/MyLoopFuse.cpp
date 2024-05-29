@@ -1,13 +1,12 @@
 #include "llvm/Transforms/Utils/MyLoopFuse.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/PostDominators.h"
+#include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/CodeGen/ValueTypes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/PassManager.h"
-#include "llvm/Support/raw_ostream.h"
-#include <MacTypes.h>
 
 using namespace llvm;
 
@@ -41,18 +40,30 @@ bool L1DominatesL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2)
 
 }
 
+bool iterateSameTimes(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
+    ScalarEvolution &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
+    const SCEV *TripCount1 = SE.getBackedgeTakenCount(L1);
+    const SCEV *TripCount2 = SE.getBackedgeTakenCount(L2);
+    errs() << "Numero di iterazione di L1: ";
+    TripCount1->print(errs());
+    errs() << "\nNumero di iterazione di L2: ";
+    TripCount2->print(errs());
+    errs() <<"\n";
+    if (isa<SCEVCouldNotCompute>(TripCount1) || isa<SCEVCouldNotCompute>(TripCount2))
+        return false;
+    return SE.isKnownPredicate(ICmpInst::ICMP_EQ, TripCount1, TripCount2);
+}
+
 
 PreservedAnalyses MyLoopFusePass::run(Function &F, FunctionAnalysisManager &AM) {
-
     LoopInfo &LI = AM.getResult<LoopAnalysis>(F);
-
     Loop *OldLoop = nullptr;
-    for (auto *L : LI.getLoopsInReverseSiblingPreorder()){
+    for (auto *L : reverse(LI)){
         if (OldLoop and OldLoop != L)
-        if(areLoopAdj(L, OldLoop) && L1DominatesL2(F,AM, L, OldLoop)){
-                outs()<<"Il loop("<<OldLoop<<") "<<" è adiacente a";
-                outs()<<" loop("<<L<<")\n";
-                outs() << "E lo domina pure \n";
+        if(areLoopAdj(OldLoop, L) and L1DominatesL2(F,AM, OldLoop, L) and iterateSameTimes(F, AM, OldLoop,L)){
+                errs()<<"Il loop("<<OldLoop<<") "<<" è adiacente a"<<" loop("<<L<<")\n";
+                errs() << "E lo domina pure \n";
+                errs() << "Hanno lo stesso numero di iterazioni \n";
             }
         OldLoop = L;
     }
