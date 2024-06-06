@@ -17,19 +17,11 @@
 
 using namespace llvm;
 
-/*not used, maybe remove? */
-llvm::BasicBlock* getFirstSuccessor(llvm::BasicBlock *BB) {
-    if (!BB->getTerminator()) {
-        return nullptr;
-    }
-    llvm::Instruction *Terminator = BB->getTerminator();
-    if (Terminator->getNumSuccessors() == 0) {
-        return nullptr;
-    }
-    return Terminator->getSuccessor(0);
-}
-/*Check if 2 given loops are adjacent.
-  Formally, 2 loops are adjacent if there is no other BB between them in the Control Flow Graph.*/
+
+/**
+ * Check if 2 given loops are adjacent.
+ * Formally, 2 loops are adjacent if there is no other BB between them in the Control Flow Graph.
+*/
 bool areLoopAdj(Loop *L1, Loop *L2){
     BasicBlock *HeadL2 = L2->getLoopPreheader();
     //check if second loop has a guard, in that case loops are adj if the exitBB of L1 and the guard are adj
@@ -40,9 +32,11 @@ bool areLoopAdj(Loop *L1, Loop *L2){
         return true;
     return false;
 }
-/*Check if the first loop dominates the second, and viceversa if the second loop post-dominates the first.
-  Necessary condition to determine whether two loops are control flow equivalent and, as such,
-  it's guaranteed that if the first loopexecutes, also the second will.*/
+/**
+ * Check if the first loop dominates the second, and viceversa if the second loop post-dominates the first.
+ * Necessary condition to determine whether two loops are control flow equivalent and, as such,
+ * it's guaranteed that if the first loopexecutes, also the second will.
+*/
 bool L1DominatesL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
     DominatorTree &DT = AM.getResult<DominatorTreeAnalysis>(F);
     PostDominatorTree &PDT = AM.getResult<PostDominatorTreeAnalysis>(F);
@@ -52,9 +46,10 @@ bool L1DominatesL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2)
 
 }
 
-/*Check whether 2 given loops have identical trip count (they iterate the same number of times).
-  For that, scalar evolution analysis is required: it detects changes
-  in the value of scalar variables present in the loop.*/
+/** Check whether 2 given loops have identical trip count (they iterate the same number of times).
+ * For that, scalar evolution analysis is required: it detects changes
+ * in the value of scalar variables present in the loop.
+*/
 bool iterateSameTimes(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
     ScalarEvolution &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
     const SCEV *TripCount1 = SE.getBackedgeTakenCount(L1);
@@ -73,7 +68,10 @@ bool iterateSameTimes(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *
     return SE.isKnownPredicate(ICmpInst::ICMP_EQ, TripCount1, TripCount2);
 }
 
-
+/**
+ * WIP: still not found a way to implement negative dependency check between two instructions
+ * This function is basically always returning true.
+*/
 bool isAnyInstructionNegativeDep(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
     DependenceInfo &DI = AM.getResult<DependenceAnalysis>(F);
     for (auto *BBL1 : L1->getBlocks()){
@@ -98,15 +96,31 @@ bool isAnyInstructionNegativeDep(Function &F, FunctionAnalysisManager &AM, Loop 
     return true;
 }
 
+/**
+ * Extract blocks composing the body of a loop from the entire loop itself,
+ * by discarding latch, header and preheader and keeping the leftovers.
+*/
 std::vector<BasicBlock*> getBodyBlocks(Loop * L){
-    auto BodyBlock = L->getBlocksVector();
 
+    //get all loop blocks and place them in an array
+    auto BodyBlock = L->getBlocksVector(); //preheader is already left out
+
+    //remove header from list of BBs
     BodyBlock.erase(remove(BodyBlock.begin(), BodyBlock.end(), L->getHeader()), BodyBlock.end());
+
+    //remove latch from list of BBs
     if(L->getLoopLatch())
         BodyBlock.erase(remove(BodyBlock.begin(), BodyBlock.end(), L->getLoopLatch()), BodyBlock.end());
     return BodyBlock;
 }
 
+/**
+ * This function acts as a double-check in getting the correct phi node (induction variable for the loop)
+ * from a loop. It compares the phi node obtained from loop header to phi node gotten from the loop latch.
+ * They should always be the same.
+ * This function acts like llvm::Loop->getCanonicalInductionVariable().
+ * This is granted to work ONLY WITH CANONICAL LOOPS.
+*/
 Instruction* getPhiNodeFromLatch(Loop *L) {
   BasicBlock *Header = L->getHeader();
   if (!Header) return nullptr;
@@ -125,31 +139,34 @@ Instruction* getPhiNodeFromLatch(Loop *L) {
   }
   return nullptr;
 }
-void fuseL1andL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
-    // DominatorTree &DT = AM.getResult<DominatorTreeAnalysis>(F);
+
+/**
+ * Here is where fusion between two loops happen.
+*/
+void fuseL1andL2(Loop *L1, Loop *L2){
+
     auto BodyBlock2 = getBodyBlocks(L2);
     auto BodyBlock1 = getBodyBlocks(L1);
     auto *ExitBlock2 = L2->getExitBlock();
 
-
-
-    // controllo se l'istruzione terminatrice di L2 è una istruzione di branch, la faccio puntare al Latch
+    // check if terminator instruction of L2 is a branch, in that case make that point to L2's latch
     if(BranchInst *BI = dyn_cast<BranchInst>(L2->getHeader()->getTerminator())){
             ReplaceInstWithInst(BI, BranchInst::Create(L2->getLoopLatch()));
     }
-    // dal body1 punto all'inizio del body2
+    // body1 -> body2
     if(BranchInst *BI = dyn_cast<BranchInst>(BodyBlock1.back()->getTerminator())){
             ReplaceInstWithInst(BI, BranchInst::Create(BodyBlock2.front()));
     }
+    // body2 (now merged with body1) -> latch1
     if(BranchInst *BI = dyn_cast<BranchInst>(BodyBlock2.back()->getTerminator())){
             ReplaceInstWithInst(BI, BranchInst::Create(L1->getLoopLatch()));
     }
-    // setto la branch del h1 per puntare a exit di l2
+    // branch_header1 -> exit_L2 instead of -> exit_L1 (now dead code)
     if(BranchInst *BI = dyn_cast<BranchInst>(L1->getHeader()->getTerminator())){
             BI->setSuccessor(1,ExitBlock2 );
     }
 
-    // prendere dall'header del loop 2 la variabile di iterazione
+    //replacing uses of induction variable in body2 (now linked to body1) with the one from body1
 
     Instruction *PhiL1 = getPhiNodeFromLatch(L1);
     Instruction *PhiL2 = getPhiNodeFromLatch(L2);
@@ -163,8 +180,6 @@ void fuseL1andL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
 
 }
 
-// todo controllare gli usi della var iterante
-
 PreservedAnalyses MyLoopFusePass::run(Function &F, FunctionAnalysisManager &AM) {
     LoopInfo &LI = AM.getResult<LoopAnalysis>(F);
     Loop *OldLoop = nullptr;
@@ -172,12 +187,16 @@ PreservedAnalyses MyLoopFusePass::run(Function &F, FunctionAnalysisManager &AM) 
     bool isLoopChanged = true;
     while (isLoopChanged){
         isLoopChanged = false;
-        for (auto *L : reverse(LI)){
+        for (auto *L : reverse(LI)){ //iterate on all CFG loops
             if (OldLoop and OldLoop != L)
-            if(areLoopAdj(OldLoop, L) and L1DominatesL2(F,AM, OldLoop, L) and iterateSameTimes(F, AM, OldLoop,L) and
-            isAnyInstructionNegativeDep(F, AM, OldLoop,L)){
+            //if loops are adjacent, L1 dominates L2 and they iterate the same number of times...
+            //negative dependency is still a dummy check, actually not working
+            if(areLoopAdj(OldLoop, L) and
+               L1DominatesL2(F,AM, OldLoop, L) and
+               iterateSameTimes(F, AM, OldLoop,L) and
+               isAnyInstructionNegativeDep(F, AM, OldLoop,L)){
                     isLoopChanged = true;
-                    fuseL1andL2(F, AM, OldLoop,L);
+                    fuseL1andL2(OldLoop,L);
                     errs() << "Fusi i due LOOP\n";
                     break;
                 }

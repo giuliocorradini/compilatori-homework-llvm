@@ -23,7 +23,7 @@ static void addIfLoopInvariant(Instruction &I, Loop &L, set<Instruction *> &loop
      * Check if the operand is a constant, an argument,
      * or an instruction and as such its definition is outside of the loop,
      * or if
-
+    */
     if (Constant *c = dyn_cast<Constant>(op1); c or arg1 or (op1_rd and not L.contains(op1_rd)) or loop_invariants.find(op1_rd) != loop_invariants.end())
         op1_valid = true;
 
