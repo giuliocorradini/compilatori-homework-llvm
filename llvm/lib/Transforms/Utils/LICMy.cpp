@@ -6,8 +6,9 @@ using namespace llvm;
 using namespace std;
 
 /** To mark an instruction as Loop Invariant, we need to check:
- * - if the instr. is either unary or binary
- * -
+ * - if the instr. is either unary or binary, and
+ * - if operands' reaching defs are outside of the loop, or
+ * - if the operands are either a costant, an argument, or they are defined inside the loop by a loop invariant instruction
 */
 static void addIfLoopInvariant(Instruction &I, Loop &L, set<Instruction *> &loop_invariants){
     if (not I.isBinaryOp() and not I.isUnaryOp())
@@ -16,15 +17,17 @@ static void addIfLoopInvariant(Instruction &I, Loop &L, set<Instruction *> &loop
     auto op1 = I.getOperand(0);
     bool op1_valid = false;
 
-    Instruction *op1_rd = dyn_cast<Instruction>(op1);
+    Instruction *op1_rd = dyn_cast<Instruction>(op1); //reaching definition of op1
     Argument *arg1 = dyn_cast<Argument>(op1);
 
     /**
      * Check if the operand is a constant, an argument,
-     * or an instruction and as such its definition is outside of the loop,
-     * or if
+     * or an instruction with its definition is outside of the loop,
+     * or if its reaching definitions is inside the loop but is loop invariant
     */
-    if (Constant *c = dyn_cast<Constant>(op1); c or arg1 or (op1_rd and not L.contains(op1_rd)) or loop_invariants.find(op1_rd) != loop_invariants.end())
+    if (Constant *c = dyn_cast<Constant>(op1);
+        c or arg1 or (op1_rd and not L.contains(op1_rd))
+        or loop_invariants.find(op1_rd) != loop_invariants.end())
         op1_valid = true;
 
     if (I.isUnaryOp()) {
@@ -38,7 +41,9 @@ static void addIfLoopInvariant(Instruction &I, Loop &L, set<Instruction *> &loop
         Instruction *op2_rd = dyn_cast<Instruction>(op2);
         Argument *arg2 = dyn_cast<Argument>(op2);
 
-        if (Constant *c = dyn_cast<Constant>(op2); c or arg2 or (op2_rd and not L.contains(op2_rd)) or loop_invariants.find(op2_rd) != loop_invariants.end())
+        if (Constant *c = dyn_cast<Constant>(op2);
+            c or arg2 or (op2_rd and not L.contains(op2_rd))
+            or loop_invariants.find(op2_rd) != loop_invariants.end())
             op2_valid = true;
 
         if (op1_valid and op2_valid) {
@@ -139,7 +144,7 @@ PreservedAnalyses LICMyPass::run(Loop &L, LoopAnalysisManager &LAM, LoopStandard
     set<Instruction *> MovableInst = filterMovable(L, ExitBlocks, LoopInvariants, DT);
 
     /**
-     * We need a preheader to which insert the moved instructions into.
+     * We need a preheader on which insert the moved instructions into.
      * All loops expressed in Loop Simplify Form have a preheader.
      * The LoopSimplify pass is automatically called by pass manager when scheduling a LoopPass.
     */

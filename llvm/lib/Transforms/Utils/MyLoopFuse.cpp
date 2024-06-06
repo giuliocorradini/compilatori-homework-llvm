@@ -130,7 +130,7 @@ Instruction* getPhiNodeFromLatch(Loop *L) {
 
   for (Instruction &I : *Header) {
     if (PHINode *PN = dyn_cast<PHINode>(&I)) {
-      for (unsigned i = 0; i < PN->getNumIncomingValues(); ++i) {
+      for (unsigned int i = 0; i < PN->getNumIncomingValues(); ++i) {
         if (PN->getIncomingBlock(i) == Latch) {
           return PN;
         }
@@ -173,9 +173,9 @@ void fuseL1andL2(Loop *L1, Loop *L2){
 
     PhiL2->replaceAllUsesWith(PhiL1);
 
-    for (auto bb : L1->blocks())
+    for (auto *bb : L1->blocks())
         bb->print(errs());
-    for (auto bb : L2->blocks())
+    for (auto *bb : L2->blocks())
         bb->print(errs());
 
 }
