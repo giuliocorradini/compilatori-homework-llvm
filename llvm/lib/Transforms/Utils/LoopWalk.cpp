@@ -1,6 +1,6 @@
 #include "llvm/Transforms/Utils/LoopWalk.h"
 
-
+/* Simple pass to demonstrate the capabilities of LoopAnalysis. */
 PreservedAnalyses LoopWalkPass::run(Loop &L, LoopAnalysisManager &LAM, LoopStandardAnalysisResults &LAR, LPMUpdater &LU) {
     errs() << "This loop is " << (L.isLoopSimplifyForm() ? "" : "not ") << "in simplify form\n";
 
