@@ -7,16 +7,13 @@
 #include "llvm/CodeGen/ValueTypes.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Dominators.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/PassManager.h"
-#include "llvm/Support/Error.h"
 #include "llvm/Support/InstructionCost.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include <__algorithm/remove.h>
-#include <string>
 
 using namespace llvm;
 
@@ -49,8 +46,7 @@ bool L1DominatesL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2)
 
 }
 
-/**
- * Check whether 2 given loops have identical trip count (they iterate the same number of times).
+/** Check whether 2 given loops have identical trip count (they iterate the same number of times).
  * For that, scalar evolution analysis is required: it detects changes
  * in the value of scalar variables present in the loop.
 */
@@ -85,7 +81,7 @@ bool isAnyInstructionNegativeDep(Function &F, FunctionAnalysisManager &AM, Loop 
                     auto DepResult = DI.depends(&I2, &I1, true);
 
                     if (DepResult and DepResult->isDirectionNegative()) {/*and isBlockingDependence(DepResult.get())){
-                        errs() <<"risultato di is Negative: "<<DepResult->isDirectionNegative() << "\n";
+                        errs() <<"resultato ddi is Negative: "<<DepResult->isDirectionNegative() << "\n";
                         errs() << "l'istruzione " << I2.getNameOrAsOperand() << " dipende da " << I1.getNameOrAsOperand() << "\n";
 
                         errs() << "Dipendenza SRC: " << DepResult->getSrc()->getNameOrAsOperand() << " DEST:" << DepResult->getDst()->getNameOrAsOperand() << "\n";
@@ -126,102 +122,30 @@ std::vector<BasicBlock*> getBodyBlocks(Loop * L){
  * This is granted to work ONLY WITH CANONICAL LOOPS.
 */
 Instruction* getPhiNodeFromLatch(Loop *L) {
-  PHINode *Phi = L->getCanonicalInductionVariable();
-  if (Phi)
-    return Phi;
-
   BasicBlock *Header = L->getHeader();
-  if (!Header){
-      return nullptr;
-  }
-  Header->print(errs());
+  if (!Header) return nullptr;
 
   BasicBlock *Latch = L->getLoopLatch();
-  if (!Latch){
-      return nullptr;
-  }
-  Latch->print(errs());
+  if (!Latch) return nullptr;
 
   for (Instruction &I : *Header) {
-      if (PHINode *PN = dyn_cast<PHINode>(&I)) {
-          for (unsigned int i = 0; i < PN->getNumIncomingValues(); ++i) {
-              if (PN->getIncomingBlock(i) == Latch) {
-                  // Controllo se il PHINode è incrementato nel Latch
-                  Value *IncomingValue = PN->getIncomingValue(i);
-                  if (Instruction *ADDI = dyn_cast<Instruction>(IncomingValue)){
-                      if( ADDI->getOpcode() == Instruction::Add){ // Controllo che la variabile di incremento provenga dal latch e abbia come operando la phinode davvero
-                          if ((ADDI->getOperand(0) == PN or ADDI->getOperand(1) == PN) and ADDI->getParent() == Latch){
-                              errs() << "Variabile di incremento: " << PN->getNameOrAsOperand() << "\n";
-                              return PN;
-                          }
-                      }
-                  }
-              }
-          }
+    if (PHINode *PN = dyn_cast<PHINode>(&I)) {
+      for (unsigned int i = 0; i < PN->getNumIncomingValues(); ++i) {
+        if (PN->getIncomingBlock(i) == Latch) {
+          return PN;
+        }
       }
+    }
   }
   return nullptr;
-
 }
 
-bool isForLoop(Loop* L){
-    return true;
-}
-
-/**
- * During test time with situations different than loops iterating on arrays, we found out that other variables
- * have a different behaviour: they regroup out-of-loop initialization using a phi node. We tried to manage this situation
- * by moving those phi nodes whose in-loop variables are defined, by moving them to the fused loop's header
-*/
-void moveUsefulInstr(Loop *L1, Loop *L2, Instruction *PhiL2){
-    for (Instruction &I : *L2->getHeader()) {
-        if (PHINode *PN = dyn_cast<PHINode>(&I)) {
-            errs() << "Phinode nell'header: " << PN->getNameOrAsOperand() << "\n";
-            for (unsigned int i = 0; i < PN->getNumIncomingValues(); ++i) {
-                if (PN->getIncomingBlock(i) == L2->getLoopLatch() and PN != PhiL2) { //se non è il phinode che contiene la variabile di iterazione
-
-                    PHINode *NewPN = PHINode::Create(PN->getType(), PN->getNumIncomingValues(), "moved"+PN->getName() , &*L1->getHeader()->getFirstInsertionPt());
-                    for (unsigned int j = 0; j < PN->getNumIncomingValues(); ++j) {
-                        BasicBlock *IncomingBlock = PN->getIncomingBlock(j);
-                        Value *IncomingValue = PN->getIncomingValue(j);
-                        if (IncomingBlock == L2->getLoopPredecessor() or IncomingBlock == L2->getLoopPreheader()){
-                            IncomingBlock = L1->getLoopPredecessor();
-                            errs()<<"LOOP PREDECESSOR: "<< L1->getLoopPredecessor()->getNameOrAsOperand() <<"\n";
-                        }
-                        else if (IncomingBlock == L2->getLoopLatch()) {
-                            IncomingBlock = L1->getLoopLatch();  // Sostituisci il latch di L2 con il latch di L1
-                        }
-
-                        NewPN->addIncoming(IncomingValue, IncomingBlock); // il valore non è cambiato, cambio i blocchi predecessori
-                        //se il predBlock era il latch del loop2 allora diventa il latch del loop1
-                        // se il predBlock era il predecessore del loop2 allora diventa il predecessore del loop1
-                    }
-                    L1->getHeader()->print(errs());
-                    PN->replaceAllUsesWith(NewPN);
-
-                }
-            }
-        }
-    }
-}
 
 /**
  * Here is where fusion between two loops happen.
 */
 void fuseL1andL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
     LoopInfo &LI = AM.getResult<LoopAnalysis>(F);
-
-    Instruction *PhiL1 = getPhiNodeFromLatch(L1);
-    Instruction *PhiL2 = getPhiNodeFromLatch(L2);
-
-    if (!PhiL1 or !PhiL2)
-        return;
-
-    // DO WIHLE -> head non presente / corrisponde al primo blocco del body
-    // il latch fa la conditional branch -> head fa una unconditional branch
-    // SOLUZIONE: Dal loop 2 tolgo l'incremento della phi e anche la phi stessa dopodichè posso mergare
-    // COME CONTROLLO CHE SIA FOR O WHILE ->
-
     auto BodyBlock2 = getBodyBlocks(L2);
     auto BodyBlock1 = getBodyBlocks(L1);
     auto *ExitBlock2 = L2->getExitBlock();
@@ -248,35 +172,30 @@ void fuseL1andL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
 
     //replacing uses of induction variable in body2 (now linked to body1) with the one from body1
 
-
+    Instruction *PhiL1 = getPhiNodeFromLatch(L1);
+    Instruction *PhiL2 = getPhiNodeFromLatch(L2);
 
     PhiL2->replaceAllUsesWith(PhiL1);
 
-    //TODO: Muovere tutte le phi che sono presenti nell'header tranne quella di incremento, potrebbero servire
-    moveUsefulInstr(L1, L2, PhiL2);
-
-    //TODO : gestire loop innestati, questo non funziona perchè fanno parte già del loop innestato
     LI.erase(L2);
     for (BasicBlock *BB : BodyBlock2)
         L1->addBasicBlockToLoop(BB, LI);
 }
 
-//TODO : gestire loop innestati
+
 
 PreservedAnalyses MyLoopFusePass::run(Function &F, FunctionAnalysisManager &AM) {
     LoopInfo &LI = AM.getResult<LoopAnalysis>(F);
     Loop *OldLoop = nullptr;
-    bool isLoopChanged;
-    do{
+    bool isLoopChanged = true;
+    while (isLoopChanged){
         isLoopChanged = false;
         for (auto *L : reverse(LI)){ //iterate on all CFG loops
-            L->print(errs());
             if (OldLoop and OldLoop != L){
                 //if loops are adjacent, L1 dominates L2 and they iterate the same number of times...
                 //negative dependency is still a dummy check, actually not working
                 if(areLoopAdj(OldLoop, L) and L1DominatesL2(F,AM, OldLoop, L) and
                     iterateSameTimes(F, AM, OldLoop, L) and isAnyInstructionNegativeDep(F, AM, OldLoop,L)){
-                        errs()<<"inizio fusione dei loop\n";
                         isLoopChanged = true;
                         fuseL1andL2(F, AM, OldLoop, L);
                         errs() << "Fusi i due LOOP\n";
@@ -285,7 +204,7 @@ PreservedAnalyses MyLoopFusePass::run(Function &F, FunctionAnalysisManager &AM) 
             }
             OldLoop = L;
         }
-    }while(isLoopChanged);
+    }
 
     return PreservedAnalyses::all();
 }
