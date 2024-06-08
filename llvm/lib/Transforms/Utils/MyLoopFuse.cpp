@@ -187,23 +187,21 @@ void fuseL1andL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
 PreservedAnalyses MyLoopFusePass::run(Function &F, FunctionAnalysisManager &AM) {
     LoopInfo &LI = AM.getResult<LoopAnalysis>(F);
     Loop *OldLoop = nullptr;
-
     bool isLoopChanged = true;
     while (isLoopChanged){
         isLoopChanged = false;
         for (auto *L : reverse(LI)){ //iterate on all CFG loops
-            if (OldLoop and OldLoop != L)
-            //if loops are adjacent, L1 dominates L2 and they iterate the same number of times...
-            //negative dependency is still a dummy check, actually not working
-            if(areLoopAdj(OldLoop, L) and
-               L1DominatesL2(F,AM, OldLoop, L) and
-               iterateSameTimes(F, AM, OldLoop,L) and
-               isAnyInstructionNegativeDep(F, AM, OldLoop,L)){
-                    isLoopChanged = true;
-                    fuseL1andL2(OldLoop,L);
-                    errs() << "Fusi i due LOOP\n";
-                    break;
-                }
+            if (OldLoop and OldLoop != L){
+                //if loops are adjacent, L1 dominates L2 and they iterate the same number of times...
+                //negative dependency is still a dummy check, actually not working
+                if(areLoopAdj(OldLoop, L) and L1DominatesL2(F,AM, OldLoop, L) and
+                    iterateSameTimes(F, AM, OldLoop, L) and isAnyInstructionNegativeDep(F, AM, OldLoop,L)){
+                        isLoopChanged = true;
+                        fuseL1andL2(F, AM, OldLoop, L);
+                        errs() << "Fusi i due LOOP\n";
+                        break;
+                    }
+            }
             OldLoop = L;
         }
     }
