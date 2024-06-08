@@ -137,23 +137,23 @@ Instruction* getPhiNodeFromLatch(Loop *L) {
   return nullptr;
 }
 void fuseL1andL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
-    // DominatorTree &DT = AM.getResult<DominatorTreeAnalysis>(F);
+    LoopInfo &LI = AM.getResult<LoopAnalysis>(F);
     auto BodyBlock2 = getBodyBlocks(L2);
     auto BodyBlock1 = getBodyBlocks(L1);
     auto *ExitBlock2 = L2->getExitBlock();
 
-
-
-    // controllo se l'istruzione terminatrice di L2 è una istruzione di branch, la faccio puntare al Latch
+    // controllo se l'istruzione terminatrice dell'header di L2 è una istruzione di branch, la faccio puntare al Latch
     if(BranchInst *BI = dyn_cast<BranchInst>(L2->getHeader()->getTerminator())){
-            ReplaceInstWithInst(BI, BranchInst::Create(L2->getLoopLatch()));
+        ReplaceInstWithInst(BI, BranchInst::Create(L2->getLoopLatch()));
     }
     // dal body1 punto all'inizio del body2
     if(BranchInst *BI = dyn_cast<BranchInst>(BodyBlock1.back()->getTerminator())){
-            ReplaceInstWithInst(BI, BranchInst::Create(BodyBlock2.front()));
+        //BI->setSuccessor(0, BodyBlock2.front());
+        ReplaceInstWithInst(BI, BranchInst::Create(BodyBlock2.front()));
     }
     if(BranchInst *BI = dyn_cast<BranchInst>(BodyBlock2.back()->getTerminator())){
-            ReplaceInstWithInst(BI, BranchInst::Create(L1->getLoopLatch()));
+        //BI->setSuccessor(0, L1->getLoopLatch());
+        ReplaceInstWithInst(BI, BranchInst::Create(L1->getLoopLatch()));
     }
     // setto la branch del h1 per puntare a exit di l2
     if(BranchInst *BI = dyn_cast<BranchInst>(L1->getHeader()->getTerminator())){
@@ -167,15 +167,13 @@ void fuseL1andL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
 
     PhiL2->replaceAllUsesWith(PhiL1);
 
-    for (auto bb : L1->blocks())
-        bb->print(errs());
-    for (auto bb : L2->blocks())
-        bb->print(errs());
-
+    LI.erase(L2);
+    for (BasicBlock *BB : BodyBlock2)
+        L1->addBasicBlockToLoop(BB, LI);
 }
 
-// todo controllare gli usi della var iterante
 
+// todo controllare gli usi della var iterante
 PreservedAnalyses MyLoopFusePass::run(Function &F, FunctionAnalysisManager &AM) {
     LoopInfo &LI = AM.getResult<LoopAnalysis>(F);
     Loop *OldLoop = nullptr;
@@ -193,7 +191,6 @@ PreservedAnalyses MyLoopFusePass::run(Function &F, FunctionAnalysisManager &AM) 
                 }
             OldLoop = L;
         }
-
     }
 
     return PreservedAnalyses::all();
