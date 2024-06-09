@@ -119,7 +119,7 @@ std::vector<BasicBlock*> getBodyBlocks(Loop * L){
  * from a loop. It compares the phi node obtained from loop header to phi node gotten from the loop latch.
  * They should always be the same.
  * This function acts like llvm::Loop->getCanonicalInductionVariable().
- * This is granted to work ONLY WITH CANONICAL LOOPS.
+ * This is granted to work ONLY WITH FOR LOOPS.
 */
 Instruction* getPhiNodeFromLatch(Loop *L) {
   BasicBlock *Header = L->getHeader();
@@ -180,8 +180,8 @@ void fuseL1andL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
     LI.erase(L2);
     for (BasicBlock *BB : BodyBlock2)
         L1->addBasicBlockToLoop(BB, LI);
-}
 
+}
 
 
 PreservedAnalyses MyLoopFusePass::run(Function &F, FunctionAnalysisManager &AM) {
