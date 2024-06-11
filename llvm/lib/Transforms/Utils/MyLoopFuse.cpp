@@ -61,19 +61,23 @@ bool L1DominatesL2(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2)
 */
 bool iterateSameTimes(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
     ScalarEvolution &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
+
     const SCEV *TripCount1 = SE.getBackedgeTakenCount(L1);
     const SCEV *TripCount2 = SE.getBackedgeTakenCount(L2);
-    errs() << "Numero di iterazione di L1: ";
+    
+    errs() << "L1 iterations: ";
     TripCount1->print(errs());
-    errs() << "\nNumero di iterazione di L2: ";
+    
+    errs() << "\nL2 iterations: ";
     TripCount2->print(errs());
+    
     errs() <<"\n";
 
-    //returning false if at least one of the loops has a non predictable trip count: loop fusion will be discarded
     if (isa<SCEVCouldNotCompute>(TripCount1) || isa<SCEVCouldNotCompute>(TripCount2)){
-        errs() << "Errore !\n";
+        errs() << "Error, at least a loop has no predictable backedge count\n";
         return false;
     }
+    
     return SE.isKnownPredicate(ICmpInst::ICMP_EQ, TripCount1, TripCount2);
 }
 
