@@ -77,36 +77,46 @@ bool iterateSameTimes(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *
         errs() << "Error, at least a loop has no predictable backedge count\n";
         return false;
     }
-    
+
     return SE.isKnownPredicate(ICmpInst::ICMP_EQ, TripCount1, TripCount2);
 }
 
 /**
  * WIP: still not found a way to implement negative dependency check between two instructions
- * This function is basically always returning true.
+ * This function is basically always returning false.
 */
-bool isAnyInstructionNegativeDep(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
+bool hasAnyInstructionNegativeDep(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
+    errs() << "Checking negative dependency\n";
     DependenceInfo &DI = AM.getResult<DependenceAnalysis>(F);
-    for (auto *BBL1 : L1->getBlocks()){
-        for(auto &I1 : *BBL1){
-            for (auto *BBL2 : L2->getBlocks()){
-                for(auto &I2 : *BBL2){
-                    auto DepResult = DI.depends(&I2, &I1, true);
+    for (auto *BBL2 : L2->getBlocks()){
+        for(auto &I2 : *BBL2){
+            LoadInst *load = dyn_cast<LoadInst>(&I2);
+            if (not load)
+                continue;
+            
+            errs() << "Load for L2: " << load->getNameOrAsOperand() << "\n";
 
-                    if (DepResult and DepResult->isDirectionNegative()) {/*and isBlockingDependence(DepResult.get())){
-                        errs() <<"resultato ddi is Negative: "<<DepResult->isDirectionNegative() << "\n";
-                        errs() << "l'istruzione " << I2.getNameOrAsOperand() << " dipende da " << I1.getNameOrAsOperand() << "\n";
+            for (auto *BBL1 : L1->getBlocks()) {
+                for(auto &I1 : *BBL1) {
+                    StoreInst *store = dyn_cast<StoreInst>(&I1);
+                    if (not store)
+                        continue;
+                    
+                    errs() << "Store for L1: " << store->getOperand(1)->getNameOrAsOperand() << "\n";
+                    
+                    auto DepResult = DI.depends(load, store, false);
+                    if (not DepResult)
+                        errs() << "No negative dependency\n";
 
-                        errs() << "Dipendenza SRC: " << DepResult->getSrc()->getNameOrAsOperand() << " DEST:" << DepResult->getDst()->getNameOrAsOperand() << "\n";
-                        DepResult->dump(errs());*/
-                        return false;
-                        // return if
+                    if (DepResult and DepResult->isAnti()) {
+                        errs() << "Negative dependency\n";
+                        return true;
                     }
                 }
             }
         }
     }
-    return true;
+    return false;
 }
 
 /**
@@ -279,8 +289,33 @@ PreservedAnalyses MyLoopFusePass::run(Function &F, FunctionAnalysisManager &AM) 
             if (OldLoop and OldLoop != L){
                 //if loops are adjacent, L1 dominates L2 and they iterate the same number of times...
                 //negative dependency is still a dummy check, actually not working
-                if(areLoopAdj(OldLoop, L) and L1DominatesL2(F,AM, OldLoop, L) and
-                    iterateSameTimes(F, AM, OldLoop, L) and isAnyInstructionNegativeDep(F, AM, OldLoop,L)){
+
+                bool adjacent = areLoopAdj(OldLoop, L);
+                if (not adjacent) {
+                    errs() << "Loops are not adjacent\n";
+                    continue;
+                }
+
+                bool dominates = L1DominatesL2(F,AM, OldLoop, L);
+                if (not dominates) {
+                    errs() << "Dominance not verified\n";
+                    continue;
+                }
+                
+                bool iterations = iterateSameTimes(F, AM, OldLoop, L);
+                if (not iterations) {
+                    errs() << "Loops do not have the same trip count\n";
+                    continue;
+                }
+                
+                bool any_negative_dep = hasAnyInstructionNegativeDep(F, AM, OldLoop,L);
+                if (any_negative_dep) {
+                    errs() << "There is a negative dependency\n";
+                    continue;
+                }
+
+
+                if(adjacent and dominates and iterations and not any_negative_dep) {
                         errs()<<"inizio fusione dei loop\n";
                         isLoopChanged = true;
                         fuseL1andL2(F, AM, OldLoop, L);
