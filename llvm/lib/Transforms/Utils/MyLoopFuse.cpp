@@ -82,11 +82,155 @@ bool iterateSameTimes(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *
 }
 
 /**
+ * This SCEV visitor holds information about a pointer access in a loop.
+ * It's used to confront access patterns when doing loop fusion.
+ */
+class PtrAccessVisitor : public SCEVVisitor<PtrAccessVisitor> {
+private:
+    bool initd = false;
+    bool valid = true;
+    uint64_t stride = 0; // Only constant additive stride is supported
+
+protected:
+    void print_expression(const SCEV *S) {
+        errs() << "Analyzing " << *S << "\n";
+    }
+
+public:
+    PtrAccessVisitor() {
+        reset();
+    }
+
+    void reset() {
+        initd = false;
+        valid = true;
+        stride = 0;
+    }
+
+    void visit(const SCEV *S) {
+        errs() << "Unhandled SCEV " << *S << " of type " << S->getSCEVType() << "\n";
+    }
+
+    /**
+     * Visit an AddRecExpr: a polynomial on loop trip count, tipically used in array access. 
+     */
+    void visitAddRecExpr(const SCEVAddRecExpr *S) {
+        print_expression(S);
+
+        if (not initd) {
+            initd = true;
+
+            /*if (auto s = S->getOperand(2); isa<SCEVConstant>(s)) {
+                //SCEVConstant *sc = dynamic_cast<SCEVConstant>(s);
+                //stride = sc->getAPInt().getZExtValue();
+            }*/
+                
+        }
+    }
+};
+
+static bool haveSameStride(ScalarEvolution &SE, const SCEVAddRecExpr *storeExpr, const SCEVAddRecExpr *loadExpr) {
+    auto *storeStride = storeExpr->getOperand(1);
+    auto *loadStride = loadExpr->getOperand(1);
+
+    return SE.isKnownPredicate(ICmpInst::ICMP_EQ, storeStride, loadStride);
+}
+
+static bool loadBaseIsAheadOfStoreBase(ScalarEvolution &SE, const SCEVAddRecExpr *storeExpr, const SCEVAddRecExpr *loadExpr) {
+    auto *storeBase = storeExpr->getOperand(0);
+    auto *loadBase = loadExpr->getOperand(0);
+
+    const SCEVConstant *storeOffset = nullptr;
+    const SCEV *storeBasePtr = nullptr;
+
+    const SCEVConstant *loadOffset = nullptr;
+    const SCEV *loadBasePtr = nullptr;
+
+    auto storePtr = dyn_cast<SCEVAddExpr>(storeBase);
+    if (storePtr) {
+        errs() << "store ptr is a scevaddexpr\n";
+        storeOffset = dyn_cast<SCEVConstant>(storePtr->getOperand(0));
+        storeBasePtr = storePtr->getOperand(1);
+    } else {
+        storeBasePtr = storeBase;
+    }
+
+    auto loadPtr = dyn_cast<SCEVAddExpr>(loadBase);
+    if (loadPtr) {
+        errs() << "load ptr is a scevaddexpr\n";
+        loadOffset = dyn_cast<SCEVConstant>(loadPtr->getOperand(0));
+        loadBasePtr = loadPtr->getOperand(1);
+    } else {
+        loadBasePtr = loadBase;
+    }
+
+    if (SE.isKnownPredicate(ICmpInst::ICMP_NE, storeBasePtr, loadBasePtr))
+        return true;
+
+    if (storeOffset and loadOffset)
+        return SE.isKnownPredicate(ICmpInst::ICMP_UGT, loadOffset, storeOffset);
+
+    if (storeOffset and not loadOffset)
+        return SE.isKnownNegative(storeOffset);
+
+    if (not storeOffset and loadOffset)
+        return SE.isKnownPositive(loadOffset);
+
+    return false;   //no offset and storeBasePtr == loadBasePtr
+}
+
+/**
+ * Check negative dependencies on load and store pointers using Scalar Evolution.
+ * 
+ * @returns true if there is a negative dependency, or conservatively if SCEV cannot be computed.
+ */
+static bool checkNegativeDependency(StoreInst *store, Loop *L1, LoadInst *load, Loop *L2, Function &F, FunctionAnalysisManager &AM) {
+    ScalarEvolution &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
+
+    const SCEV *storePtrEvo = SE.getSCEVAtScope(store->getOperand(1), L1);
+    const SCEV *loadPtrEvo = SE.getSCEVAtScope(load->getOperand(0), L2);
+
+    if (isa<SCEVCouldNotCompute>(storePtrEvo) or isa<SCEVCouldNotCompute>(loadPtrEvo)) {
+        errs() << "Cannot compute SCEV for load or store\n";
+        return true;
+    }
+
+    errs() << "Store pointer: " << store->getOperand(1)->getNameOrAsOperand() << " with SCEV of type: " << storePtrEvo->getSCEVType() << "\n";
+    storePtrEvo->print(errs());
+    errs() << "\n";
+
+    errs() << "Load pointer : " << load->getOperand(0)->getNameOrAsOperand() << " with SCEV of type: " << loadPtrEvo->getSCEVType() << "\n";
+    loadPtrEvo->print(errs());
+    errs() << "\n";
+
+    //AddRecExpr represent a polynomial expression on the trip count for the specified loop
+    auto storeExpr = dyn_cast<SCEVAddRecExpr>(storePtrEvo);
+    auto loadExpr = dyn_cast<SCEVAddRecExpr>(loadPtrEvo);
+    if (not (storeExpr and loadExpr)) {
+        errs() << "A pointer is not dependent on loop trip count.\n";
+        //TODO check if the loadExpr pointer clashes with storeExpr SCEV. i.e. at the same trip count, load ptr < store ptr
+        return false;
+    }
+
+    if (not haveSameStride(SE, storeExpr, loadExpr)) {
+        errs() << "Different stride\n";
+        return true;    //Conservative, but some cases must be checked
+    }
+
+    if (loadBaseIsAheadOfStoreBase(SE, storeExpr, loadExpr)) {
+        errs() << "load base is ahead of store\n";
+        return true;    // A real negative dependency
+    }
+    
+    return false;
+}
+
+/**
  * WIP: still not found a way to implement negative dependency check between two instructions
  * This function is basically always returning false.
 */
 bool hasAnyInstructionNegativeDep(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
-    errs() << "Checking negative dependency\n";
+    errs() << "Checking negative dependencies\n";
     DependenceInfo &DI = AM.getResult<DependenceAnalysis>(F);
     for (auto *BBL2 : L2->getBlocks()){
         for(auto &I2 : *BBL2){
@@ -104,11 +248,11 @@ bool hasAnyInstructionNegativeDep(Function &F, FunctionAnalysisManager &AM, Loop
                     
                     errs() << "Store for L1: " << store->getOperand(1)->getNameOrAsOperand() << "\n";
                     
-                    auto DepResult = DI.depends(load, store, false);
+                    auto DepResult = DI.depends(load, store, true);
                     if (not DepResult)
-                        errs() << "No negative dependency\n";
+                        errs() << "No dependency\n";
 
-                    if (DepResult and DepResult->isAnti()) {
+                    else if (checkNegativeDependency(store, L1, load, L2, F, AM)) {
                         errs() << "Negative dependency\n";
                         return true;
                     }
