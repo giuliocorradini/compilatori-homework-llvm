@@ -18,7 +18,6 @@
 #include "llvm/Transforms/Utils/LocalOpts.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/Transforms/Utils/UDDUWalker.h"
 #include <map>
 #include <optional>
 #include <string>
@@ -59,10 +58,10 @@ optional<Instruction::BinaryOps> getReverseOpcode(BinaryOperator const *I) {
   static map<Instruction::BinaryOps, Instruction::BinaryOps> reverse = {
       {Instruction::Add, Instruction::Sub},
       {Instruction::Sub, Instruction::Add},
-      {Instruction::Mul, Instruction::SDiv},
+      /*{Instruction::Mul, Instruction::SDiv},
       {Instruction::SDiv, Instruction::Mul},
       {Instruction::Shl, Instruction::LShr},
-      {Instruction::LShr, Instruction::Shl},
+      {Instruction::LShr, Instruction::Shl},*/
   };
 
   /**
@@ -180,7 +179,7 @@ void strenghtReduction(Instruction &inst) {
     // prendo l'argomento 1 e 2
     Value *fac1 = inst.getOperand(0);
     Value *fac2 = inst.getOperand(1);
-    if (ConstantInt *C = dyn_cast<ConstantInt>(fac1)) {
+    if (ConstantInt *C = dyn_cast<ConstantInt>(fac1); C and not C->isZero()) {
       // Se il primo è una costante ed è potenza del 2
       int distance = isPowerOf2OrAdj(C->getValue());
       if (distance != -2) {
@@ -205,7 +204,7 @@ void strenghtReduction(Instruction &inst) {
         } else
           inst.replaceAllUsesWith(shiftInst);
       }
-    } else if (ConstantInt *C = dyn_cast<ConstantInt>(fac2)) {
+    } else if (ConstantInt *C = dyn_cast<ConstantInt>(fac2); C and not C->isZero()) {
       int distance = isPowerOf2OrAdj(C->getValue());
       if (distance != -2) {
         const APInt &modifiedValue = C->getValue() + distance;
@@ -261,6 +260,12 @@ bool optimizeOn(BasicBlock &B) {
 } // namespace StrenghtReduction
 
 namespace AlgebraicIdentityOpt {
+
+/**
+ * When I is an operation between two constant, that could be picked up
+ * by algebraic identity, we don't do nothing. It's optimized by constant folding
+ * and constant propagation.
+ */
 bool algebraicIdentity(llvm::Instruction &I) {
   if (BinaryOperator::Mul == I.getOpcode()) {
     Value *Op1 = I.getOperand(0);
@@ -268,10 +273,10 @@ bool algebraicIdentity(llvm::Instruction &I) {
     // if first operand is constant and 1 and second operand is not a constant,
     // or viceversa...
     if (ConstantInt *C = dyn_cast<ConstantInt>(Op1);
-        C && C->getValue().isOne() && not dyn_cast<ConstantInt>(Op2)) {
+        C && C->getValue().isOne() && not isa<ConstantInt>(Op2)) {
       I.replaceAllUsesWith(Op2);
     } else if (ConstantInt *C = dyn_cast<ConstantInt>(Op2);
-               C && C->getValue().isOne() && not dyn_cast<ConstantInt>(Op1)) {
+        C && C->getValue().isOne() && not isa<ConstantInt>(Op1)) {
       I.replaceAllUsesWith(Op1);
     } else {
       return false;
@@ -283,10 +288,10 @@ bool algebraicIdentity(llvm::Instruction &I) {
     // if first operand is constant and 0 and second operand is not a constant,
     // or viceversa...
     if (ConstantInt *C = dyn_cast<ConstantInt>(Op1);
-        C && C->getValue().isZero() && not dyn_cast<ConstantInt>(Op2)) {
+        C && C->getValue().isZero() && not isa<ConstantInt>(Op2)) {
       I.replaceAllUsesWith(Op2);
     } else if (ConstantInt *C = dyn_cast<ConstantInt>(Op2);
-               C && C->getValue().isZero() && not dyn_cast<ConstantInt>(Op1)) {
+        C && C->getValue().isZero() && not isa<ConstantInt>(Op1)) {
       I.replaceAllUsesWith(Op1);
     } else {
       return false;
@@ -318,9 +323,6 @@ bool runOnBasicBlock(BasicBlock &B) {
   isOptimized |= AlgebraicIdentityOpt::optimizeOn(B);
   isOptimized |= StrenghtReduction::optimizeOn(B);
   isOptimized |= MultiInstructionOpt::optimizeOn(B);
-
-  walk_UD(*B.begin());
-  walk_DU(*B.begin());
 
   return isOptimized;
 }
