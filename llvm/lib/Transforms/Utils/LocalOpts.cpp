@@ -272,12 +272,16 @@ bool algebraicIdentity(llvm::Instruction &I) {
     Value *Op2 = I.getOperand(1);
     // if first operand is constant and 1 and second operand is not a constant,
     // or viceversa...
-    if (ConstantInt *C = dyn_cast<ConstantInt>(Op1);
-        C && C->getValue().isOne() && not isa<ConstantInt>(Op2)) {
-      I.replaceAllUsesWith(Op2);
-    } else if (ConstantInt *C = dyn_cast<ConstantInt>(Op2);
-        C && C->getValue().isOne() && not isa<ConstantInt>(Op1)) {
-      I.replaceAllUsesWith(Op1);
+    if (ConstantInt *C = dyn_cast<ConstantInt>(Op1); C) {
+      if (C->isOne() && not isa<ConstantInt>(Op2))
+        I.replaceAllUsesWith(Op2);
+      else if (C->isZero())
+        I.replaceAllUsesWith(C);
+    } else if (ConstantInt *C = dyn_cast<ConstantInt>(Op2); C) {
+      if (C->getValue().isOne() && not isa<ConstantInt>(Op1))
+        I.replaceAllUsesWith(Op1);
+      else
+        I.replaceAllUsesWith(C);
     } else {
       return false;
     }
