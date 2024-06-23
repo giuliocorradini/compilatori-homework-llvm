@@ -179,7 +179,7 @@ void strenghtReduction(Instruction &inst) {
     // prendo l'argomento 1 e 2
     Value *fac1 = inst.getOperand(0);
     Value *fac2 = inst.getOperand(1);
-    if (ConstantInt *C = dyn_cast<ConstantInt>(fac1); C and not C->isZero()) {
+    if (ConstantInt *C = dyn_cast<ConstantInt>(fac1); C and not C->isZero() and not C->isOne()) {
       // Se il primo è una costante ed è potenza del 2
       int distance = isPowerOf2OrAdj(C->getValue());
       if (distance != -2) {
@@ -204,7 +204,7 @@ void strenghtReduction(Instruction &inst) {
         } else
           inst.replaceAllUsesWith(shiftInst);
       }
-    } else if (ConstantInt *C = dyn_cast<ConstantInt>(fac2); C and not C->isZero()) {
+    } else if (ConstantInt *C = dyn_cast<ConstantInt>(fac2); C and not C->isZero() and not C->isOne()) {
       int distance = isPowerOf2OrAdj(C->getValue());
       if (distance != -2) {
         const APInt &modifiedValue = C->getValue() + distance;
