@@ -217,12 +217,12 @@ void strenghtReduction(Instruction &inst) {
         shiftInst->insertAfter(&inst);
         if (distance == -1) {
           Instruction *secondOp =
-              BinaryOperator::Create(Instruction::Sub, shiftInst, fac1);
+              BinaryOperator::Create(Instruction::Add, shiftInst, fac1);
           secondOp->insertAfter(shiftInst);
           inst.replaceAllUsesWith(secondOp);
         } else if (distance == 1) {
           Instruction *secondOp =
-              BinaryOperator::Create(Instruction::Add, shiftInst, fac1);
+              BinaryOperator::Create(Instruction::Sub, shiftInst, fac1);
           secondOp->insertAfter(shiftInst);
           inst.replaceAllUsesWith(secondOp);
         } else
