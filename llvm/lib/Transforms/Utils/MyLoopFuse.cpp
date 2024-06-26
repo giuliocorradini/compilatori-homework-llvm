@@ -30,14 +30,29 @@ using namespace std;
  * Formally, 2 loops are adjacent if there is no other BB between them in the Control Flow Graph.
 */
 bool areLoopAdj(Loop *L1, Loop *L2){
-    BasicBlock *HeadL2 = L2->getLoopPreheader();
+    if (L1->isGuarded() and L2->isGuarded()) {
+        if (L1->getLoopGuardBranch()->getCondition() != L2->getLoopGuardBranch()->getCondition())
+            return false;
+
+        if (auto guard1_latch= L1->getLoopGuardBranch()->getSuccessor(0); guard1_latch and guard1_latch == L2->getLoopGuardBranch()->getParent())
+            return true;
+        return false;
+    } else if (not L1->isGuarded() and not L2->isGuarded()) {
+        if (auto l1_exit = L1->getExitBlock(); l1_exit and l1_exit == L2->getLoopPreheader())
+            return true;
+        return false;
+    }
+
+    return false;
+
+    /*BasicBlock *HeadL2 = L2->getLoopPreheader();
     //check if second loop has a guard, in that case loops are adj if the exitBB of L1 and the guard are adj
     if (L2->isGuarded())
         HeadL2 = L2->getLoopGuardBranch()->getParent();
     BasicBlock *ExitBlock1 = L1->getExitBlock();
     if(ExitBlock1 and ExitBlock1 == HeadL2)
         return true;
-    return false;
+    return false;*/
 }
 /**
  * Check if the first loop dominates the second, and viceversa if the second loop post-dominates the first.
@@ -82,53 +97,10 @@ bool iterateSameTimes(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *
 }
 
 /**
- * This SCEV visitor holds information about a pointer access in a loop.
- * It's used to confront access patterns when doing loop fusion.
+ * Returns true if the SCEV expression for a store (usually in L1) has the same stride as the SCEV expression
+ * for a possibly clashing load (usually in L2).
+ * The stride is the increment taken by the index variable at each loop recurrence.
  */
-class PtrAccessVisitor : public SCEVVisitor<PtrAccessVisitor> {
-private:
-    bool initd = false;
-    bool valid = true;
-    uint64_t stride = 0; // Only constant additive stride is supported
-
-protected:
-    void print_expression(const SCEV *S) {
-        errs() << "Analyzing " << *S << "\n";
-    }
-
-public:
-    PtrAccessVisitor() {
-        reset();
-    }
-
-    void reset() {
-        initd = false;
-        valid = true;
-        stride = 0;
-    }
-
-    void visit(const SCEV *S) {
-        errs() << "Unhandled SCEV " << *S << " of type " << S->getSCEVType() << "\n";
-    }
-
-    /**
-     * Visit an AddRecExpr: a polynomial on loop trip count, tipically used in array access. 
-     */
-    void visitAddRecExpr(const SCEVAddRecExpr *S) {
-        print_expression(S);
-
-        if (not initd) {
-            initd = true;
-
-            /*if (auto s = S->getOperand(2); isa<SCEVConstant>(s)) {
-                //SCEVConstant *sc = dynamic_cast<SCEVConstant>(s);
-                //stride = sc->getAPInt().getZExtValue();
-            }*/
-                
-        }
-    }
-};
-
 static bool haveSameStride(ScalarEvolution &SE, const SCEVAddRecExpr *storeExpr, const SCEVAddRecExpr *loadExpr) {
     auto *storeStride = storeExpr->getOperand(1);
     auto *loadStride = loadExpr->getOperand(1);
@@ -226,9 +198,9 @@ static bool checkNegativeDependency(StoreInst *store, Loop *L1, LoadInst *load, 
 }
 
 /**
- * WIP: still not found a way to implement negative dependency check between two instructions
- * This function is basically always returning false.
-*/
+ * Checks for negative dependencies. A negative dependency occurs when a read-after-write may attempt
+ * to read a future value. When this happens loops cannot be fused without further tweaking.
+ */
 bool hasAnyInstructionNegativeDep(Function &F, FunctionAnalysisManager &AM, Loop *L1, Loop *L2){
     errs() << "Checking negative dependencies\n";
     DependenceInfo &DI = AM.getResult<DependenceAnalysis>(F);
